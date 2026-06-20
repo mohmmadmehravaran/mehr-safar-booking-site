@@ -34,6 +34,10 @@ export interface StyleEdits {
   shadowSpread?: number;
   shadowColor?: string;
   shadowInset?: boolean;
+  // Canva-style extras
+  fontFamily?: string;
+  rotation?: number;
+  locked?: boolean;
 }
 
 export interface CustomPage {
@@ -89,6 +93,13 @@ export interface CustomWidget {
   shadowColor?: string;
   shadowInset?: boolean;
   fontSize?: number;
+  // Canva-style extras
+  fontFamily?: string;   // font family applied to text/button/container widgets
+  rotation?: number;     // rotation in degrees
+  // Photoshop-style layer flags
+  locked?: boolean;      // when true the element can't be moved/resized/selected on canvas
+  hidden?: boolean;      // visibility toggle from the layers panel
+  name?: string;         // custom layer name shown in the layers panel
 }
 
 export type EditsRegistry = Record<string, StyleEdits>;
@@ -106,6 +117,8 @@ interface SiteEditsContextType {
   removeCustomWidget: (id: string) => void;
   updateWidgetZIndex: (id: string, zIndex: number) => void;
   moveWidgetLayer: (id: string, direction: 'up' | 'down' | 'top' | 'bottom') => void;
+  duplicateWidget: (id: string) => void;
+  reorderWidgets: (orderedTopToBottomIds: string[]) => void;
   // Custom pages (no-code page builder)
   customPages: CustomPage[];
   addCustomPage: (label: string, icon?: string) => string; // returns the new page path
@@ -173,6 +186,13 @@ function applySingleEdit(el: HTMLElement, edit: StyleEdits) {
     }
   }
 
+  // 2c. Rotation (Canva-style) — combine with translate so move + rotate coexist
+  if (edit.rotation !== undefined && edit.rotation !== 0) {
+    const baseT = (x !== 0 || y !== 0) ? `translate3d(${x}px, ${y}px, 0px) ` : '';
+    el.style.transform = `${baseT}rotate(${edit.rotation}deg)`;
+    el.style.transition = 'none';
+  }
+
   // 3. Dimensions
   if (edit.width !== undefined) {
     el.style.width = `${edit.width}px`;
@@ -204,6 +224,9 @@ function applySingleEdit(el: HTMLElement, edit: StyleEdits) {
   // 4. Styles
   if (edit.fontSize !== undefined) el.style.fontSize = `${edit.fontSize}px`;
   else el.style.removeProperty('font-size');
+
+  if (edit.fontFamily !== undefined) el.style.fontFamily = edit.fontFamily;
+  else el.style.removeProperty('font-family');
   
   if (edit.color !== undefined) el.style.color = edit.color;
   else el.style.removeProperty('color');
@@ -424,7 +447,7 @@ export function SiteEditsProvider({ children }: { children: React.ReactNode }) {
       'width', 'min-width', 'max-width',
       'height', 'min-height', 'max-height',
       'flex', 'box-sizing',
-      'font-size', 'color',
+      'font-size', 'font-family', 'color',
       'background-color', 'background-image', 'background-size', 'background-position',
       'background-image', // redundant but safe
       'padding', 'border-radius', 'text-align',
@@ -603,6 +626,41 @@ export function SiteEditsProvider({ children }: { children: React.ReactNode }) {
     setCustomWidgets((prev) => prev.map((w) => (w.id === id ? { ...w, zIndex } : w)));
   }, []);
 
+  const duplicateWidget = useCallback((id: string) => {
+    pushSnapshot();
+    let newId = '';
+    setCustomWidgets((prev) => {
+      const src = prev.find((w) => w.id === id);
+      if (!src) return prev;
+      newId = `custom-widget-${Date.now()}`;
+      const maxZ = Math.max(...prev.map((w) => w.zIndex ?? 25), 25);
+      const copy: CustomWidget = {
+        ...src,
+        id: newId,
+        x: (src.x ?? 0) + 24,
+        y: (src.y ?? 0) + 24,
+        zIndex: maxZ + 1,
+        name: src.name ? `${src.name} (کپی)` : undefined,
+        locked: false,
+        hidden: false,
+      };
+      return [...prev, copy];
+    });
+    if (newId) setSelectedPath(`widget-id:${newId}`);
+  }, [pushSnapshot]);
+
+  /** Reassign z-index so widgets match the given top→bottom order (drag-drop in layers panel). */
+  const reorderWidgets = useCallback((orderedTopToBottomIds: string[]) => {
+    pushSnapshot();
+    setCustomWidgets((prev) => {
+      const n = orderedTopToBottomIds.length;
+      const zById: Record<string, number> = {};
+      // First id = top-most = highest z-index
+      orderedTopToBottomIds.forEach((wid, i) => { zById[wid] = 25 + (n - i); });
+      return prev.map((w) => (wid => wid in zById ? { ...w, zIndex: zById[wid] } : w)(w.id));
+    });
+  }, [pushSnapshot]);
+
   const moveWidgetLayer = useCallback((id: string, direction: 'up' | 'down' | 'top' | 'bottom') => {
     setCustomWidgets((prev) => {
       const widgets = [...prev];
@@ -638,6 +696,8 @@ export function SiteEditsProvider({ children }: { children: React.ReactNode }) {
         removeCustomWidget,
         updateWidgetZIndex,
         moveWidgetLayer,
+        duplicateWidget,
+        reorderWidgets,
         customPages,
         addCustomPage,
         updateCustomPage,
