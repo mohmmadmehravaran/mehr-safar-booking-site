@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useSiteEdits } from '../../context/SiteEditsContext';
-import { computeDomPath, findByDomPath, getFriendlyLabel, isEditableTextLeaf } from '../../utils/domPath';
+import { computeDomPath, findByDomPath, getFriendlyLabel, isEditableTextLeaf, makePageScopedKey } from '../../utils/domPath';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   collectSnapTargets, computeSnap, snapEdge, setGuides, clearGuides,
@@ -913,6 +913,41 @@ function InspectorWindow({ path }: { path: string }) {
           );
         })()}
 
+        {/* LAYER ORDER (Photoshop-style) — works for EVERY element */}
+        {(() => {
+          const isWidget = path.startsWith('widget-id:');
+          const wId = isWidget ? path.replace('widget-id:', '') : null;
+          const wObj = isWidget ? customWidgets.find((cw) => cw.id === wId) : null;
+          const curZ = isWidget
+            ? (wObj?.zIndex ?? 25)
+            : (edit.zIndex ?? (parseInt(comp.zIndex) || 1));
+          const setZ = (z: number) => {
+            if (isWidget && wId) updateCustomWidget(wId, { zIndex: z });
+            else setElementEdit(path, { zIndex: z });
+          };
+          const toFront = () => { if (isWidget && wId) moveWidgetLayer(wId, 'top'); else setZ(60); };
+          const toBack = () => { if (isWidget && wId) moveWidgetLayer(wId, 'bottom'); else setZ(0); };
+          return (
+            <Section title="ترتیب لایه (جلو / عقب) — مثل فتوشاپ">
+              <p className="text-[11px] text-gray-500 mb-2 leading-relaxed">
+                با این دکمه‌ها هر عنصر (متن، عکس، کادر، دکمه…) را روی یا زیر بقیه قرار دهید.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setZ(curZ + 1)} className="py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-colors">⬆️ یک لایه جلوتر</button>
+                <button onClick={() => setZ(Math.max(0, curZ - 1))} className="py-2.5 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold hover:bg-blue-100 transition-colors">⬇️ یک لایه عقب‌تر</button>
+                <button onClick={toFront} className="py-2.5 bg-gray-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">⏫ کاملاً جلو</button>
+                <button onClick={toBack} className="py-2.5 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors">⏬ کاملاً عقب</button>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[11px]">
+                <span className="text-gray-400">لایهٔ فعلی: <b className="text-gray-700">{curZ}</b></span>
+                {!isWidget && edit.zIndex !== undefined && (
+                  <button onClick={() => setElementEdit(path, { zIndex: undefined })} className="text-red-500 font-bold hover:underline">بازنشانی لایه</button>
+                )}
+              </div>
+            </Section>
+          );
+        })()}
+
         {/* RESET ACTION & DELETION */}
         <div className="pt-4 border-t border-gray-100 flex flex-col gap-2">
           {path.startsWith('widget-id:') ? (
@@ -1219,7 +1254,8 @@ export default function MasterVisualEditor() {
 
       const domPath = computeDomPath(target);
       if (domPath) {
-        setSelectedPath(domPath);
+        // Page-scope element selections so edits never bleed across pages.
+        setSelectedPath(makePageScopedKey(domPath));
       }
     };
 

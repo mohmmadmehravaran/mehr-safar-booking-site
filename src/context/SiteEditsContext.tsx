@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { findByDomPath } from '../utils/domPath';
+import { findByDomPath, getCurrentPath, pageOfKey, PAGE_SEP } from '../utils/domPath';
 import { fileToCompressedDataURL } from '../utils/image';
 
 export interface StyleEdits {
@@ -22,6 +22,7 @@ export interface StyleEdits {
   hidden?: boolean;
   opacity?: number;
   glass?: boolean;
+  zIndex?: number;
   // Stroke (border)
   strokeWidth?: number;
   strokeColor?: string;
@@ -155,10 +156,19 @@ function applySingleEdit(el: HTMLElement, edit: StyleEdits) {
   if (x !== 0 || y !== 0) {
     el.style.transform = `translate3d(${x}px, ${y}px, 0px)`;
     el.style.transition = 'none'; // Overcome hover CSS transitions jumping
-    el.style.zIndex = '30';
+    if (edit.zIndex === undefined) el.style.zIndex = '30';
   } else {
     el.style.removeProperty('transform');
-    el.style.removeProperty('z-index');
+    if (edit.zIndex === undefined) el.style.removeProperty('z-index');
+  }
+
+  // 2b. Layer order (Photoshop-style z-index) — works for any element
+  if (edit.zIndex !== undefined) {
+    el.style.zIndex = String(edit.zIndex);
+    // z-index only works on positioned elements; promote static ones to relative
+    if (window.getComputedStyle(el).position === 'static') {
+      el.style.position = 'relative';
+    }
   }
 
   // 3. Dimensions
@@ -275,7 +285,15 @@ export function SiteEditsProvider({ children }: { children: React.ReactNode }) {
   const [edits, setEdits] = useState<EditsRegistry>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : {};
+      const parsed: EditsRegistry = saved ? JSON.parse(saved) : {};
+      // Migration: drop legacy element edits that aren't page-scoped, so old
+      // edits stop bleeding across pages. Widget edits (widget-id:*) and already
+      // page-scoped edits are kept.
+      const cleaned: EditsRegistry = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (k.startsWith('widget-id:') || k.includes(PAGE_SEP)) cleaned[k] = v;
+      }
+      return cleaned;
     } catch {
       return {};
     }
@@ -348,7 +366,13 @@ export function SiteEditsProvider({ children }: { children: React.ReactNode }) {
     let animationFrameId: number;
     const sync = () => {
       const registry = editsRef.current;
+      const cur = getCurrentPath();
       Object.entries(registry).forEach(([path, edit]) => {
+        // Page scoping: only apply an element edit on the page it was made.
+        if (!path.startsWith('widget-id:')) {
+          const pg = pageOfKey(path);
+          if (pg === null || pg !== cur) return; // legacy/global or other-page → skip
+        }
         const el = findByDomPath(path);
         if (el) applySingleEdit(el, edit);
       });
@@ -394,7 +418,7 @@ export function SiteEditsProvider({ children }: { children: React.ReactNode }) {
     // If the element is an image, we need to be careful with src. 
     // But here we only handle inline style properties.
     const editorProps = [
-      'transform', 'z-index',
+      'transform', 'z-index', 'position',
       'width', 'min-width', 'max-width',
       'height', 'min-height', 'max-height',
       'flex', 'box-sizing',

@@ -1,6 +1,37 @@
 /**
  * Compute a robust, unique DOM path for an element.
  */
+export const PAGE_SEP = '§§';
+
+/** Current route path from the HashRouter (works outside Router context). */
+export function getCurrentPath(): string {
+  if (typeof window === 'undefined') return '/';
+  const h = window.location.hash || '#/';
+  const raw = h.replace(/^#/, '') || '/';
+  return raw.split('?')[0] || '/';
+}
+
+/** Page-scope a DOM path so edits on one page never bleed onto another. */
+export function makePageScopedKey(domPath: string, page?: string): string {
+  if (!domPath || domPath.startsWith('widget-id:')) return domPath;
+  const p = page ?? getCurrentPath();
+  return `${p}${PAGE_SEP}${domPath}`;
+}
+
+/** The page a scoped key belongs to, or null for widget / legacy keys. */
+export function pageOfKey(key: string): string | null {
+  if (!key || key.startsWith('widget-id:')) return null;
+  const i = key.indexOf(PAGE_SEP);
+  return i === -1 ? null : key.slice(0, i);
+}
+
+/** Strip the page prefix from a scoped key to get the raw DOM path. */
+export function rawDomPath(key: string): string {
+  if (!key || key.startsWith('widget-id:')) return key;
+  const i = key.indexOf(PAGE_SEP);
+  return i === -1 ? key : key.slice(i + PAGE_SEP.length);
+}
+
 export function computeDomPath(el: Element | null): string | null {
   if (!el) return null;
   if (el === document.body || el === document.documentElement) return null;
@@ -42,7 +73,7 @@ export function findByDomPath(path: string): HTMLElement | null {
     const id = path.replace('widget-id:', '');
     return document.querySelector(`[data-custom-widget-id="${id}"]`) as HTMLElement | null;
   }
-  const parts = path.split('/');
+  const parts = rawDomPath(path).split('/');
   let cur: Element | null = document.body;
 
   for (const part of parts) {
