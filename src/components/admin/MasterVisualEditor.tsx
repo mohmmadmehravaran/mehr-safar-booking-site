@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   X, Move, Type, Palette, RotateCcw, EyeOff, Eye,
   Image as ImageIcon, Link as LinkIcon, AlignRight, AlignCenter, AlignLeft,
-  Check, Upload, Sparkles, Magnet
+  Check, Upload, Magnet
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useSiteEdits } from '../../context/SiteEditsContext';
@@ -978,6 +978,30 @@ function MasterToolbar() {
   const allPages = useAllPages();
   const magnet = useMagnet();
 
+  // Draggable toolbar position (null = default centered top position)
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number; w: number; h: number } | null>(null);
+
+  const startToolbarDrag = (e: React.PointerEvent) => {
+    const bar = (e.currentTarget as HTMLElement).closest('[data-toolbar-root]') as HTMLElement | null;
+    if (!bar) return;
+    const rect = bar.getBoundingClientRect();
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: rect.left, oy: rect.top, w: rect.width, h: rect.height };
+    setPos({ x: rect.left, y: rect.top });
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  };
+  const onToolbarDrag = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    let nx = d.ox + (e.clientX - d.sx);
+    let ny = d.oy + (e.clientY - d.sy);
+    nx = Math.max(8, Math.min(window.innerWidth - d.w - 8, nx));
+    ny = Math.max(8, Math.min(window.innerHeight - d.h - 8, ny));
+    setPos({ x: nx, y: ny });
+  };
+  const endToolbarDrag = () => { dragRef.current = null; };
+
   if (!isVisualEditing) return null;
 
   const editsCount = Object.keys(edits).length;
@@ -995,11 +1019,20 @@ function MasterToolbar() {
   return (
     <div
       data-visual-ui
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] glass rounded-full px-4 py-2.5 shadow-2xl border border-white flex items-center gap-4 text-xs tracking-tight"
+      data-toolbar-root
+      className={`fixed z-[9999] glass rounded-full px-4 py-2.5 shadow-2xl border border-white flex items-center gap-4 text-xs tracking-tight max-w-[96vw] flex-wrap ${pos ? '' : 'top-4 left-1/2 -translate-x-1/2'}`}
+      style={pos ? { top: pos.y, left: pos.x } : undefined}
       dir="rtl"
     >
-      <div className="flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded-full font-bold shadow-sm">
-        <Sparkles className="w-3.5 h-3.5 animate-spin" />
+      <div
+        onPointerDown={startToolbarDrag}
+        onPointerMove={onToolbarDrag}
+        onPointerUp={endToolbarDrag}
+        onPointerCancel={endToolbarDrag}
+        title="برای جابجایی نوار، بکشید"
+        className="flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded-full font-bold shadow-sm cursor-move select-none touch-none"
+      >
+        <Move className="w-3.5 h-3.5" />
         <span>ویرایش بصری</span>
       </div>
 
