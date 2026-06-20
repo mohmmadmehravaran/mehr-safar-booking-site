@@ -54,6 +54,80 @@ function rgbToHex(rgb: string): string {
 /* ─────────────────────────────────────────────────────────
    Selection Overlay – کادر سبز دور عنصر انتخاب شده همراه با هندل کشیدن
 ───────────────────────────────────────────────────────── */
+/* Custom Gradient Builder — ساخت گرادیان با رنگ‌های دلخواه (مثل کانوا) */
+function parseHexColors(g?: string): string[] {
+  if (!g) return [];
+  const m = g.match(/#[0-9a-fA-F]{3,8}/g);
+  return m ? m.slice(0, 2) : [];
+}
+
+function GradientBuilder({ current, onApply }: { current?: string; onApply: (v: string) => void }) {
+  const init = parseHexColors(current);
+  const [type, setType] = useState<'linear' | 'radial'>(current?.startsWith('radial') ? 'radial' : 'linear');
+  const [c1, setC1] = useState(init[0] || '#10b981');
+  const [c2, setC2] = useState(init[1] || '#0ea5e9');
+  const [angle, setAngle] = useState(135);
+
+  const build = (t: 'linear' | 'radial', a: number, x: string, y: string) =>
+    t === 'linear' ? `linear-gradient(${a}deg, ${x}, ${y})` : `radial-gradient(circle at center, ${x}, ${y})`;
+
+  const value = build(type, angle, c1, c2);
+
+  return (
+    <div className="pt-1 space-y-3">
+      <span className="text-[11px] text-gray-500 font-bold block">ساخت گرادیان دلخواه با رنگ خودتان</span>
+
+      <div className="flex bg-gray-100 p-1 rounded-2xl gap-1">
+        {([['linear', 'خطی'], ['radial', 'شعاعی']] as const).map(([t, lbl]) => (
+          <button
+            key={t}
+            onClick={() => { setType(t); onApply(build(t, angle, c1, c2)); }}
+            className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${type === t ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500'}`}
+          >{lbl}</button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <span className="text-[10px] text-gray-500 mb-1 block">رنگ اول</span>
+          <div className="flex items-center gap-1.5">
+            <input type="color" value={c1} onChange={(e) => { setC1(e.target.value); onApply(build(type, angle, e.target.value, c2)); }} className="w-9 h-9 rounded-lg border border-gray-200 cursor-pointer" />
+            <span className="font-mono text-[10px] uppercase text-gray-500">{c1}</span>
+          </div>
+        </div>
+        <div>
+          <span className="text-[10px] text-gray-500 mb-1 block">رنگ دوم</span>
+          <div className="flex items-center gap-1.5">
+            <input type="color" value={c2} onChange={(e) => { setC2(e.target.value); onApply(build(type, angle, c1, e.target.value)); }} className="w-9 h-9 rounded-lg border border-gray-200 cursor-pointer" />
+            <span className="font-mono text-[10px] uppercase text-gray-500">{c2}</span>
+          </div>
+        </div>
+      </div>
+
+      {type === 'linear' && (
+        <div>
+          <div className="flex justify-between text-xs mb-1.5 font-medium">
+            <span className="text-gray-500">زاویه</span>
+            <span className="text-emerald-700 font-bold">{angle}°</span>
+          </div>
+          <input type="range" min={0} max={360} value={angle} onChange={(e) => { const a = Number(e.target.value); setAngle(a); onApply(build('linear', a, c1, c2)); }} className="w-full" />
+          <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+            {[0, 45, 90, 135].map((a) => (
+              <button key={a} onClick={() => { setAngle(a); onApply(build('linear', a, c1, c2)); }} className="py-1.5 text-[10px] bg-gray-50 rounded-lg hover:bg-gray-100 font-bold">{a}°</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="h-12 rounded-xl border border-gray-200" style={{ background: value }} />
+      <div className="flex gap-2">
+        <button onClick={() => onApply(value)} className="flex-1 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-colors">اعمال گرادیان</button>
+        <button onClick={() => { const t = c1; setC1(c2); setC2(t); onApply(build(type, angle, c2, c1)); }} title="جابجایی رنگ‌ها" className="px-3 py-2 bg-gray-100 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors">↔</button>
+      </div>
+    </div>
+  );
+}
+
 function SelectionBox({ path }: { path: string }) {
   const { edits, setElementEdit, customWidgets } = useSiteEdits();
   const el = findByDomPath(path);
@@ -841,6 +915,14 @@ function InspectorWindow({ path }: { path: string }) {
                     />
                   ))}
                 </div>
+              </div>
+
+              {/* Custom gradient builder — رنگ‌های دلخواه */}
+              <div className="pt-2 border-t border-gray-100">
+                <GradientBuilder
+                  current={edit.bgGradient}
+                  onApply={(v) => setElementEdit(path, { bgGradient: v, bgSrc: undefined })}
+                />
               </div>
 
               {(edit.bgSrc || edit.bgGradient) && (
