@@ -923,7 +923,11 @@ function InspectorWindow({ path }: { path: string }) {
             const newY = on
               ? Math.max(8, (wObj.y ?? 0) - window.scrollY)
               : (wObj.y ?? 0) + window.scrollY;
-            updateCustomWidget(wId, { pinned: on, y: newY });
+            const patch: Partial<typeof wObj> = { pinned: on, y: newY };
+            // When pinning, lift it onto the header layer so it never slides under
+            // the translucent sticky header.
+            if (on) patch.zIndex = Math.max(wObj.zIndex ?? 25, 55);
+            updateCustomWidget(wId, patch);
           };
           return (
             <Section title="رفتار هنگام اسکرول">
