@@ -19,12 +19,26 @@ import { fileToCompressedDataURL } from '../../utils/image';
 import { IconPicker, ShapePicker, PageManager, LinkSelect, useAllPages } from './PickerModals';
 import { getIconComp, ICON_LIBRARY } from '../../utils/iconLibrary';
 import { SHAPE_LIBRARY } from '../../utils/shapeLibrary';
-import { MousePointerClick, Square, Smile as SmileIcon } from 'lucide-react';
+import {
+  MousePointerClick, Square, Smile as SmileIcon, Layers, Copy,
+  Lock, Unlock, RotateCw, Type as TypeFont,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+} from 'lucide-react';
+import LayersPanel from './LayersPanel';
+import { FONT_LIBRARY, ensureFontLoaded, preloadAllFonts } from '../../utils/fonts';
 
 /* useMagnet — subscribe to the magnet-enabled toggle */
 function useMagnet() {
   return useSyncExternalStore(subscribeMagnet, getMagnet, getMagnet);
 }
+
+/* ─── Layers-panel open/close store (shared by toolbar + controller) ─── */
+let _layersOpen = false;
+const _layersListeners = new Set<() => void>();
+function getLayersOpen() { return _layersOpen; }
+export function setLayersOpen(v: boolean) { _layersOpen = v; _layersListeners.forEach((l) => l()); }
+function subscribeLayers(cb: () => void) { _layersListeners.add(cb); return () => { _layersListeners.delete(cb); }; }
+function useLayersOpen() { return useSyncExternalStore(subscribeLayers, getLayersOpen, getLayersOpen); }
 
 /* ─── RGB → HEX Helper ─── */
 function rgbToHex(rgb: string): string {
@@ -41,9 +55,12 @@ function rgbToHex(rgb: string): string {
    Selection Overlay – کادر سبز دور عنصر انتخاب شده همراه با هندل کشیدن
 ───────────────────────────────────────────────────────── */
 function SelectionBox({ path }: { path: string }) {
-  const { edits, setElementEdit } = useSiteEdits();
+  const { edits, setElementEdit, customWidgets } = useSiteEdits();
   const el = findByDomPath(path);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const wLocked = path.startsWith('widget-id:')
+    ? !!customWidgets.find((w) => w.id === path.replace('widget-id:', ''))?.locked
+    : !!edits[path]?.locked;
 
   // Position sync loop
   useEffect(() => {
@@ -123,6 +140,28 @@ function SelectionBox({ path }: { path: string }) {
   if (!rect || !el) return null;
 
   const label = getFriendlyLabel(el);
+
+  // Locked layers show only an outline + lock badge — no drag / resize handles.
+  if (wLocked) {
+    return (
+      <div
+        data-visual-ui
+        style={{
+          position: 'fixed', top: rect.top, left: rect.left, width: rect.width, height: rect.height,
+          border: '2px dashed #f59e0b', borderRadius: 6, pointerEvents: 'none', zIndex: 9990,
+          boxShadow: '0 0 0 1px white',
+        }}
+      >
+        <div style={{
+          position: 'absolute', top: -30, right: -2, display: 'flex', alignItems: 'center', gap: 6,
+          padding: '4px 10px', background: '#f59e0b', color: 'white', borderRadius: '8px 8px 0 8px',
+          fontSize: 11, fontWeight: 'bold', fontFamily: "'Vazirmatn', sans-serif",
+        }}>
+          🔒 <span>{label} (قفل‌شده)</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -299,7 +338,7 @@ function ResizeHandles({ el, path }: { el: HTMLElement; path: string; rect?: DOM
    Inspector Modal (سمت چپ صفحه)
 ───────────────────────────────────────────────────────── */
 function InspectorWindow({ path }: { path: string }) {
-  const { edits, setElementEdit, resetElementEdit, setSelectedPath, customWidgets, updateCustomWidget, removeCustomWidget, moveWidgetLayer } = useSiteEdits();
+  const { edits, setElementEdit, resetElementEdit, setSelectedPath, customWidgets, updateCustomWidget, removeCustomWidget, moveWidgetLayer, duplicateWidget } = useSiteEdits();
   const [showIconPick, setShowIconPick] = useState(false);
   const [showShapePick, setShowShapePick] = useState(false);
   const el = findByDomPath(path);
@@ -352,6 +391,35 @@ function InspectorWindow({ path }: { path: string }) {
 
       {/* Editor Body */}
       <div className="p-5 overflow-y-auto space-y-6 flex-1 text-sm">
+        {/* QUICK LAYER ACTIONS (widgets only) — name, duplicate, lock, hide */}
+        {path.startsWith('widget-id:') && (() => {
+          const wId = path.replace('widget-id:', '');
+          const wObj = customWidgets.find((cw) => cw.id === wId);
+          if (!wObj) return null;
+          return (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={wObj.name || ''}
+                onChange={(e) => updateCustomWidget(wId, { name: e.target.value || undefined })}
+                placeholder="نام لایه (دلخواه) — مثل: بنر بالا"
+                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => duplicateWidget(wId)} className="flex items-center justify-center gap-1 py-2 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold hover:bg-blue-100 transition-colors">
+                  <Copy className="w-3.5 h-3.5" /> کپی
+                </button>
+                <button onClick={() => updateCustomWidget(wId, { locked: !wObj.locked })} className={`flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-bold transition-colors ${wObj.locked ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  {wObj.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />} {wObj.locked ? 'قفل' : 'بازقفل'}
+                </button>
+                <button onClick={() => updateCustomWidget(wId, { hidden: !wObj.hidden })} className={`flex items-center justify-center gap-1 py-2 rounded-xl text-xs font-bold transition-colors ${wObj.hidden ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  {wObj.hidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />} {wObj.hidden ? 'مخفی' : 'نمایان'}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* CUSTOM WIDGET EDITORS (container / button / text / icon / shape) */}
         {path.startsWith('widget-id:') ? (() => {
           const wId = path.replace('widget-id:', '');
@@ -616,6 +684,94 @@ function InspectorWindow({ path }: { path: string }) {
             ))}
           </div>
         </Section>
+
+        {/* FONT FAMILY (Canva-style) */}
+        {(() => {
+          const isWidget = path.startsWith('widget-id:');
+          const wId = isWidget ? path.replace('widget-id:', '') : null;
+          const wObj = isWidget ? customWidgets.find((cw) => cw.id === wId) : null;
+          // Only show for text-bearing elements
+          const textBearing = !isImg && !isInput && (!isWidget || ['text', 'button', 'container'].includes(wObj?.type || ''));
+          if (!textBearing) return null;
+          const curFont = isWidget ? (wObj?.fontFamily || "'Vazirmatn', sans-serif") : (edit.fontFamily || "'Vazirmatn', sans-serif");
+          const setFont = (v: string) => {
+            ensureFontLoaded(v);
+            if (isWidget && wId) updateCustomWidget(wId, { fontFamily: v });
+            else setElementEdit(path, { fontFamily: v });
+          };
+          return (
+            <Section title="فونت (نوع قلم)" icon={<TypeFont className="w-4 h-4 text-emerald-600" />}>
+              <select
+                value={curFont}
+                onChange={(e) => setFont(e.target.value)}
+                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
+                <optgroup label="فارسی">
+                  {FONT_LIBRARY.filter((f) => f.script === 'fa').map((f) => (
+                    <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="لاتین">
+                  {FONT_LIBRARY.filter((f) => f.script === 'latin').map((f) => (
+                    <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
+                  ))}
+                </optgroup>
+              </select>
+              <div className="mt-2 p-3 bg-gray-50 rounded-xl text-center text-gray-700" style={{ fontFamily: curFont }}>
+                نمونه متن · Sample 123
+              </div>
+            </Section>
+          );
+        })()}
+
+        {/* ROTATION (Canva-style) */}
+        {(() => {
+          const isWidget = path.startsWith('widget-id:');
+          const wId = isWidget ? path.replace('widget-id:', '') : null;
+          const wObj = isWidget ? customWidgets.find((cw) => cw.id === wId) : null;
+          const curRot = isWidget ? (wObj?.rotation ?? 0) : (edit.rotation ?? 0);
+          const setRot = (v: number) => {
+            if (isWidget && wId) updateCustomWidget(wId, { rotation: v });
+            else setElementEdit(path, { rotation: v });
+          };
+          return (
+            <Section title="چرخش (Rotation)" icon={<RotateCw className="w-4 h-4 text-emerald-600" />}>
+              <div className="flex justify-between text-xs mb-1.5 font-medium">
+                <span className="text-gray-500">زاویه چرخش</span>
+                <span className="text-emerald-700 font-bold">{curRot}°</span>
+              </div>
+              <input type="range" min={-180} max={180} value={curRot} onChange={(e) => setRot(Number(e.target.value))} className="w-full" />
+              <div className="grid grid-cols-4 gap-1.5 mt-2">
+                {[0, 45, 90, -45].map((a) => (
+                  <button key={a} onClick={() => setRot(a)} className="py-1.5 text-[11px] bg-gray-50 rounded-lg hover:bg-gray-100 font-bold">{a}°</button>
+                ))}
+              </div>
+            </Section>
+          );
+        })()}
+
+        {/* ALIGN TO PAGE (Canva-style) — widgets only */}
+        {path.startsWith('widget-id:') && (() => {
+          const wId = path.replace('widget-id:', '');
+          const wObj = customWidgets.find((cw) => cw.id === wId);
+          if (!wObj) return null;
+          const pageW = document.documentElement.clientWidth;
+          const alignX = (where: 'left' | 'center' | 'right') => {
+            const w = wObj.width || 0;
+            const x = where === 'left' ? 16 : where === 'center' ? Math.max(0, (pageW - w) / 2) : Math.max(0, pageW - w - 16);
+            updateCustomWidget(wId, { x: Math.round(x) });
+          };
+          return (
+            <Section title="ترازبندی در صفحه (Align)">
+              <p className="text-[11px] text-gray-500 mb-2">عنصر را نسبت به عرض صفحه چپ‌چین، وسط‌چین یا راست‌چین کنید.</p>
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => alignX('right')} className="flex items-center justify-center gap-1 py-2.5 bg-gray-50 rounded-xl text-xs font-bold hover:bg-gray-100"><AlignEndVertical className="w-4 h-4" /> راست</button>
+                <button onClick={() => alignX('center')} className="flex items-center justify-center gap-1 py-2.5 bg-gray-50 rounded-xl text-xs font-bold hover:bg-gray-100"><AlignCenterVertical className="w-4 h-4" /> وسط</button>
+                <button onClick={() => alignX('left')} className="flex items-center justify-center gap-1 py-2.5 bg-gray-50 rounded-xl text-xs font-bold hover:bg-gray-100"><AlignStartVertical className="w-4 h-4" /> چپ</button>
+              </div>
+            </Section>
+          );
+        })()}
 
         {/* COLORS & BACKGROUND IMAGE */}
         <Section title="پس‌زمینه و رنگ‌ها" icon={<Palette className="w-4 h-4 text-emerald-600" />}>
@@ -1051,6 +1207,7 @@ function MasterToolbar() {
   const [showPageManager, setShowPageManager] = useState(false);
   const allPages = useAllPages();
   const magnet = useMagnet();
+  const layersOpen = useLayersOpen();
 
   // Draggable toolbar position (null = default centered top position)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -1232,6 +1389,19 @@ function MasterToolbar() {
         {showPageManager && <PageManager onClose={() => setShowPageManager(false)} />}
 
         <button
+          onClick={() => setLayersOpen(!layersOpen)}
+          title="پنل لایه‌ها (Photoshop)"
+          className={`flex items-center gap-1.5 px-3 py-1.5 font-bold rounded-full transition-colors ${
+            layersOpen
+              ? 'bg-gray-900 text-white hover:bg-black shadow-sm'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>لایه‌ها</span>
+        </button>
+
+        <button
           onClick={() => setMagnet(!magnet)}
           title="آهنربا / چسبیدن به لبه‌ها (Snap)"
           className={`flex items-center gap-1.5 px-3 py-1.5 font-bold rounded-full transition-colors ${
@@ -1261,14 +1431,71 @@ function MasterToolbar() {
 ───────────────────────────────────────────────────────── */
 export default function MasterVisualEditor() {
   const { isVisualEditing } = useTheme();
-  const { selectedPath, setSelectedPath } = useSiteEdits();
+  const {
+    selectedPath, setSelectedPath, edits, setElementEdit,
+    customWidgets, updateCustomWidget, removeCustomWidget, duplicateWidget, moveWidgetLayer,
+  } = useSiteEdits();
+  const layersOpen = useLayersOpen();
 
   // Highlight / Cursor styles
   useEffect(() => {
     if (!isVisualEditing) return;
     document.body.classList.add('master-visual-editing');
+    preloadAllFonts();
     return () => document.body.classList.remove('master-visual-editing');
   }, [isVisualEditing]);
+
+  // Keyboard shortcuts (Canva/Photoshop-style): nudge, delete, duplicate, layer order, escape
+  useEffect(() => {
+    if (!isVisualEditing) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      if (typing) return;
+
+      if (e.key === 'Escape') { setSelectedPath(null); return; }
+      if (!selectedPath) return;
+
+      const isWidget = selectedPath.startsWith('widget-id:');
+      const wId = isWidget ? selectedPath.replace('widget-id:', '') : null;
+      const wObj = isWidget ? customWidgets.find((w) => w.id === wId) : null;
+      const locked = isWidget ? !!wObj?.locked : !!edits[selectedPath]?.locked;
+      const step = e.shiftKey ? 10 : 1;
+
+      const nudge = (dx: number, dy: number) => {
+        if (locked) return;
+        if (isWidget && wObj) updateCustomWidget(wId!, { x: (wObj.x ?? 0) + dx, y: (wObj.y ?? 0) + dy });
+        else setElementEdit(selectedPath, { x: (edits[selectedPath]?.x ?? 0) + dx, y: (edits[selectedPath]?.y ?? 0) + dy });
+      };
+      const forward = () => { if (isWidget && wId) moveWidgetLayer(wId, 'up'); else setElementEdit(selectedPath, { zIndex: (edits[selectedPath]?.zIndex ?? 1) + 1 }); };
+      const backward = () => { if (isWidget && wId) moveWidgetLayer(wId, 'down'); else setElementEdit(selectedPath, { zIndex: Math.max(0, (edits[selectedPath]?.zIndex ?? 1) - 1) }); };
+
+      switch (e.key) {
+        case 'Delete':
+        case 'Backspace':
+          if (isWidget && wId) { e.preventDefault(); removeCustomWidget(wId); }
+          break;
+        case 'ArrowUp': e.preventDefault(); nudge(0, -step); break;
+        case 'ArrowDown': e.preventDefault(); nudge(0, step); break;
+        case 'ArrowLeft': e.preventDefault(); nudge(-step, 0); break;
+        case 'ArrowRight': e.preventDefault(); nudge(step, 0); break;
+        case 'd': case 'D':
+          if ((e.ctrlKey || e.metaKey) && isWidget && wId) { e.preventDefault(); duplicateWidget(wId); }
+          break;
+        case ']':
+          if (e.ctrlKey || e.metaKey) { e.preventDefault(); forward(); }
+          break;
+        case '[':
+          if (e.ctrlKey || e.metaKey) { e.preventDefault(); backward(); }
+          break;
+        case 'l': case 'L':
+          if (isWidget && wId) { e.preventDefault(); updateCustomWidget(wId, { locked: !wObj?.locked }); }
+          break;
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isVisualEditing, selectedPath, customWidgets, edits, setSelectedPath, setElementEdit, updateCustomWidget, removeCustomWidget, duplicateWidget, moveWidgetLayer]);
 
   // Global click interception
   useEffect(() => {
@@ -1313,6 +1540,7 @@ export default function MasterVisualEditor() {
     <>
       <MasterToolbar />
       <SnapOverlay />
+      {layersOpen && <LayersPanel onClose={() => setLayersOpen(false)} />}
       {selectedPath && <SelectionBox path={selectedPath} />}
       {selectedPath && <InspectorWindow path={selectedPath} />}
     </>,
