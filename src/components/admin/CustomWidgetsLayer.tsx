@@ -1,8 +1,22 @@
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useSiteEdits, CustomWidget } from '../../context/SiteEditsContext';
+import { useTheme } from '../../context/ThemeContext';
 import { getIconComp } from '../../utils/iconLibrary';
 import { shapeCss } from '../../utils/shapeLibrary';
+
+/** Canva/Photoshop-style extras applied to every widget: rotation, lock, visibility. */
+function extraStyle(w: CustomWidget, editing: boolean): React.CSSProperties {
+  const s: React.CSSProperties = {};
+  if (w.rotation) s.transform = `rotate(${w.rotation}deg)`;
+  if (w.hidden) {
+    if (!editing) { s.display = 'none'; }
+    else { s.opacity = 0.3; s.outline = '2px dashed #ef4444'; s.outlineOffset = '2px'; }
+  }
+  // Locked layers can't be grabbed/clicked on the canvas while editing (manage via the layers panel).
+  if (w.locked && editing) s.pointerEvents = 'none';
+  return s;
+}
 
 function getBorder(w: CustomWidget): string {
   if (w.strokeWidth !== undefined && w.strokeWidth > 0) {
@@ -33,6 +47,7 @@ function getShadow(w: CustomWidget, defaultShadow: string): string {
 
 export default function CustomWidgetsLayer() {
   const { customWidgets } = useSiteEdits();
+  const { isVisualEditing: editing } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -70,9 +85,10 @@ export default function CustomWidgetsLayer() {
                 backdropFilter: w.glass ? 'blur(16px) saturate(180%)' : 'none',
                 overflow: 'hidden',
                 boxSizing: 'border-box',
-                fontFamily: "'Vazirmatn', sans-serif",
+                fontFamily: w.fontFamily || "'Vazirmatn', sans-serif",
                 fontSize: w.fontSize ?? 14,
                 cursor: w.link ? 'pointer' : 'default',
+                ...extraStyle(w, editing),
               }}
               dir="rtl"
               onClick={() => { if (w.link && !document.body.classList.contains('master-visual-editing')) navigate(w.link); }}
@@ -109,7 +125,7 @@ export default function CustomWidgetsLayer() {
                 boxShadow: getShadow(w, '0 8px 20px rgba(16,185,129,0.25)'),
                 zIndex: w.zIndex ?? 25,
                 opacity: w.opacity ?? 1,
-                fontFamily: "'Vazirmatn', sans-serif",
+                fontFamily: w.fontFamily || "'Vazirmatn', sans-serif",
                 fontSize: w.fontSize ?? 16,
                 fontWeight: (w.fontWeight as any) ?? 700,
                 textAlign: (w.textAlign as any) ?? 'center',
@@ -119,6 +135,7 @@ export default function CustomWidgetsLayer() {
                 justifyContent: 'center',
                 boxSizing: 'border-box',
                 backdropFilter: w.glass ? 'blur(16px) saturate(180%)' : 'none',
+                ...extraStyle(w, editing),
               }}
               dir="rtl"
             >
@@ -144,7 +161,7 @@ export default function CustomWidgetsLayer() {
                 padding: w.padding ?? 4,
                 zIndex: w.zIndex ?? 25,
                 opacity: w.opacity ?? 1,
-                fontFamily: "'Vazirmatn', sans-serif",
+                fontFamily: w.fontFamily || "'Vazirmatn', sans-serif",
                 fontSize: w.fontSize ?? 20,
                 fontWeight: (w.fontWeight as any) ?? 600,
                 textAlign: (w.textAlign as any) ?? 'right',
@@ -153,6 +170,7 @@ export default function CustomWidgetsLayer() {
                 boxSizing: 'border-box',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
+                ...extraStyle(w, editing),
               }}
               dir="rtl"
             >
@@ -189,6 +207,7 @@ export default function CustomWidgetsLayer() {
                 opacity: w.opacity ?? 1,
                 cursor: w.link && !editingNow() ? 'pointer' : 'default',
                 boxSizing: 'border-box',
+                ...extraStyle(w, editing),
               }}
             >
               <IconComp size={iconSize} color={w.color || '#10b981'} strokeWidth={2} />
@@ -223,6 +242,7 @@ export default function CustomWidgetsLayer() {
                 boxSizing: 'border-box',
                 backdropFilter: w.glass ? 'blur(16px) saturate(180%)' : 'none',
                 ...css,
+                ...extraStyle(w, editing),
               }}
             />
           );
@@ -250,6 +270,7 @@ export default function CustomWidgetsLayer() {
               backdropFilter: w.glass ? 'blur(16px) saturate(180%)' : undefined,
               WebkitBackdropFilter: w.glass ? 'blur(16px) saturate(180%)' : undefined,
               boxSizing: 'border-box',
+              ...extraStyle(w, editing),
             }}
           />
         );
