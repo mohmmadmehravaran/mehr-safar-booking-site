@@ -51,7 +51,7 @@ export default function CustomWidgetsLayer() {
               key={w.id}
               data-custom-widget-id={w.id}
               style={{
-                position: 'absolute',
+                position: w.pinned ? 'fixed' : 'absolute',
                 top: w.y,
                 left: w.x,
                 width: w.width,
@@ -95,7 +95,7 @@ export default function CustomWidgetsLayer() {
               type="button"
               onClick={goLink}
               style={{
-                position: 'absolute',
+                position: w.pinned ? 'fixed' : 'absolute',
                 top: w.y,
                 left: w.x,
                 width: w.width,
@@ -135,7 +135,7 @@ export default function CustomWidgetsLayer() {
               data-custom-widget-id={w.id}
               onClick={goLink}
               style={{
-                position: 'absolute',
+                position: w.pinned ? 'fixed' : 'absolute',
                 top: w.y,
                 left: w.x,
                 width: w.width,
@@ -171,7 +171,7 @@ export default function CustomWidgetsLayer() {
               data-custom-widget-id={w.id}
               onClick={goLink}
               style={{
-                position: 'absolute',
+                position: w.pinned ? 'fixed' : 'absolute',
                 top: w.y,
                 left: w.x,
                 width: w.width,
@@ -206,7 +206,7 @@ export default function CustomWidgetsLayer() {
               data-custom-widget-id={w.id}
               onClick={goLink}
               style={{
-                position: 'absolute',
+                position: w.pinned ? 'fixed' : 'absolute',
                 top: w.y,
                 left: w.x,
                 width: w.width,
@@ -236,7 +236,7 @@ export default function CustomWidgetsLayer() {
             src={w.src || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800'}
             alt={w.title || 'تصویر دلخواه'}
             style={{
-              position: 'absolute',
+              position: w.pinned ? 'fixed' : 'absolute',
               top: w.y,
               left: w.x,
               width: w.width,

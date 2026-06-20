@@ -913,6 +913,41 @@ function InspectorWindow({ path }: { path: string }) {
           );
         })()}
 
+        {/* SCROLL BEHAVIOR — pin element so it stays like the sticky header */}
+        {path.startsWith('widget-id:') && (() => {
+          const wId = path.replace('widget-id:', '');
+          const wObj = customWidgets.find((cw) => cw.id === wId);
+          if (!wObj) return null;
+          const togglePin = (on: boolean) => {
+            // Keep the element visually in place when switching mode
+            const newY = on
+              ? Math.max(8, (wObj.y ?? 0) - window.scrollY)
+              : (wObj.y ?? 0) + window.scrollY;
+            updateCustomWidget(wId, { pinned: on, y: newY });
+          };
+          return (
+            <Section title="رفتار هنگام اسکرول">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 pl-2">
+                  <span className="text-xs font-bold text-gray-700 block">ثابت‌ماندن هنگام اسکرول</span>
+                  <span className="text-[10px] text-gray-400 leading-relaxed block mt-0.5">
+                    مثل دکمه‌های هدر، روی صفحه می‌چسبد و با اسکرول محو/جابجا نمی‌شود.
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input type="checkbox" className="sr-only peer" checked={!!wObj.pinned} onChange={(e) => togglePin(e.target.checked)} />
+                  <div className="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600" />
+                </label>
+              </div>
+              {wObj.pinned && (
+                <p className="text-[11px] text-emerald-700 bg-emerald-50 rounded-lg p-2 mt-2">
+                  ✓ این عنصر اکنون هنگام اسکرول ثابت می‌ماند. برای قرارگرفتن روی هدر، از بخش «ترتیب لایه» آن را «کاملاً جلو» کنید.
+                </p>
+              )}
+            </Section>
+          );
+        })()}
+
         {/* LAYER ORDER (Photoshop-style) — works for EVERY element */}
         {(() => {
           const isWidget = path.startsWith('widget-id:');

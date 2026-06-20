@@ -64,6 +64,8 @@ export interface CustomWidget {
   iconSize?: number;
   // Shape widgets
   shape?: ShapeKind;
+  // Stay fixed in the viewport while scrolling (matches the sticky header)
+  pinned?: boolean;
   x: number;
   y: number;
   width: number;
